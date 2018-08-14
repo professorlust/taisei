@@ -22,7 +22,9 @@ typedef enum {
 	// this affects the draw order
 	BPoint = 1,
 	Point,
+	MiniPower,
 	Power,
+	Surge,
 	BombFrag,
 	LifeFrag,
 	Bomb,
@@ -38,6 +40,7 @@ struct Item {
 
 	int auto_collect;
 	ItemType type;
+	float pickup_value;
 
 	complex v;
 };
@@ -58,6 +61,13 @@ void spawn_item(complex pos, ItemType type);
 // WARNING: if you pass a float or double as the amount, it will not work! You must explicitly cast it to an int.
 void spawn_items(complex pos, ...) attr_sentinel;
 
+bool collect_item(Item *item, float value, float speed);
+void collect_all_items(float value, float speed);
+
 void items_preload(void);
 
 #define POWER_VALUE 3
+#define POWER_VALUE_MINI 1
+
+#define ITEM_MAX_VALUE 1.0
+#define ITEM_MIN_VALUE 0.1

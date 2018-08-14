@@ -22,14 +22,20 @@
 
 enum {
 	PLR_MAX_POWER = 400,
+	PLR_MAX_POWER_OVERFLOW = 200,
 	PLR_MAX_LIVES = 9,
 	PLR_MAX_BOMBS = 9,
+
+	// -Wpedantic doesn't like this
+	// PLR_MAX_PIV = UINT32_MAX,
+	#define PLR_MAX_PIV UINT32_MAX
 
 	PLR_MAX_LIFE_FRAGMENTS = 5,
 	PLR_MAX_BOMB_FRAGMENTS = 5,
 
 	PLR_START_LIVES = 2,
 	PLR_START_BOMBS = 3,
+	PLR_START_PIV = 10000,
 
 	PLR_SCORE_PER_LIFE_FRAG = 55000,
 	PLR_SCORE_PER_BOMB_FRAG = 22000,
@@ -38,6 +44,9 @@ enum {
 	PLR_STGPRACTICE_BOMBS = PLR_START_BOMBS,
 
 	PLR_MIN_BORDER_DIST = 16,
+
+	PLR_POWERSURGE_DURATION = 300,
+	PLR_POWERSURGE_POWERCOST = 100,
 };
 
 typedef enum {
@@ -64,16 +73,28 @@ struct Player {
 	complex pos;
 	complex velocity;
 	complex deathpos;
-	short focus;
+	complex lastmovedir;
 
-	uint16_t graze;
-	uint32_t points;
+	struct PlayerMode *mode;
+	AniPlayer ani;
+	EnemyList slaves;
+	EnemyList focus_circle;
 
+	struct {
+		int ticks;
+		struct {
+			int activated, expired;
+		} time;
+		double damage_done;
+	} powersurge;
+
+	uint64_t points;
+
+	int point_item_value;
 	int lives;
 	int bombs;
 	int life_fragments;
 	int bomb_fragments;
-	short power;
 	int continues_used;
 
 	int continuetime;
@@ -84,18 +105,17 @@ struct Player {
 	int bombcanceldelay;
 	int bombtotaltime;
 
-	struct PlayerMode *mode;
-	AniPlayer ani;
-	EnemyList slaves;
-	EnemyList focus_circle;
-
 	int inputflags;
-	bool gamepadmove;
-	complex lastmovedir;
 	int lastmovesequence; // used for animation
 	int axis_ud;
 	int axis_lr;
 
+	uint16_t graze;
+	int16_t focus;
+	int16_t power;
+	int16_t power_overflow;
+
+	bool gamepadmove;
 	bool iddqd;
 
 #ifdef PLR_DPS_STATS
@@ -137,6 +157,7 @@ void player_logic(Player*);
 bool player_should_shoot(Player *plr, bool extra);
 
 bool player_set_power(Player *plr, short npow);
+bool player_add_power(Player *plr, short pdelta);
 
 void player_move(Player*, complex delta);
 
@@ -154,13 +175,18 @@ void player_add_bomb_fragments(Player *plr, int frags);
 void player_add_lives(Player *plr, int lives);
 void player_add_bombs(Player *plr, int bombs);
 void player_add_points(Player *plr, uint points);
+void player_add_piv(Player *plr, uint piv);
+void player_extend_powersurge(Player *plr, int ticks);
 
 void player_register_damage(Player *plr, EntityInterface *target, const DamageInfo *damage);
 
 void player_cancel_bomb(Player *plr, int delay);
+void player_cancel_powersurge(Player *plr);
 void player_placeholder_bomb_logic(Player *plr);
 
+
 bool player_is_bomb_active(Player *plr);
+bool player_is_powersurge_active(Player *plr);
 bool player_is_vulnerable(Player *plr);
 bool player_is_alive(Player *plr);
 

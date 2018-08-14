@@ -833,30 +833,46 @@ void stage_draw_scene(StageInfo *stage) {
 }
 
 struct glyphcb_state {
-	Color *color;
+	Color *color1, *color2;
 };
 
 static int draw_numeric_callback(Font *font, charcode_t charcode, SpriteParams *spr_params, void *userdata) {
 	struct glyphcb_state *st = userdata;
 
 	if(charcode != '0') {
-		st->color = &stagedraw.hud_text.color.active;
+		st->color1 = st->color2;
 	}
 
-	spr_params->color = st->color;
+	spr_params->color = st->color1;
 	return 0;
 }
 
-static inline void stage_draw_hud_power_value(float ypos) {
+static void stage_draw_hud_power_value(float ypos) {
+	int pw = global.plr.power + global.plr.power_overflow;
+
+	Color *c_whole, *c_fract;
+	Color *c_op_mod = RGBA(1, 0.2 + 0.3 * psin(global.frames / 10.0), 0.2, 1.0);
+
+	if(pw <= PLR_MAX_POWER) {
+		c_whole = &stagedraw.hud_text.color.active;
+		c_fract = &stagedraw.hud_text.color.inactive;
+	} else if(pw - PLR_MAX_POWER < 100) {
+		c_whole = &stagedraw.hud_text.color.active;
+		c_fract = color_mul(COLOR_COPY(&stagedraw.hud_text.color.inactive), c_op_mod);
+	} else {
+		c_whole = color_mul(COLOR_COPY(&stagedraw.hud_text.color.active), c_op_mod);
+		c_fract = color_mul(COLOR_COPY(&stagedraw.hud_text.color.inactive), c_op_mod);
+	}
+
 	draw_fraction(
-		global.plr.power / 100.0,
+		pw / 100.0,
 		ALIGN_RIGHT,
 		170,
 		ypos,
 		get_font("mono"),
 		get_font("monosmall"),
-		&stagedraw.hud_text.color.active,
-		&stagedraw.hud_text.color.inactive,
+		c_whole,
+		c_fract,
 		false
 	);
 }
@@ -869,7 +885,7 @@ static void stage_draw_hud_score(Alignment a, float xpos, float ypos, char *buf,
 		.align = ALIGN_RIGHT,
 		.glyph_callback = {
 			draw_numeric_callback,
-			&(struct glyphcb_state) { &stagedraw.hud_text.color.inactive },
+			&(struct glyphcb_state) { &stagedraw.hud_text.color.inactive, &stagedraw.hud_text.color.active },
 		}
 	});
 }
@@ -925,6 +941,7 @@ struct labels_s {
 		float bombs;
 		float power;
 		float graze;
+		float value;
 	} y;
 };
 
@@ -958,9 +975,10 @@ void stage_draw_hud_text(struct labels_s* labels) {
 	draw_label("Spells:",   labels->y.bombs,   labels);
 	draw_label("Power:",    labels->y.power,   labels);
 	draw_label("Graze:",    labels->y.graze,   labels);
+	draw_label("Value:",    labels->y.value,   labels);
 
 	if(stagedraw.objpool_stats) {
-		stage_draw_hud_objpool_stats(labels->x.ofs, labels->y.graze + 32, 250);
+		stage_draw_hud_objpool_stats(labels->x.ofs, labels->y.value + 32, 250);
 	}
 
 	// Score/Hi-Score values
@@ -981,6 +999,18 @@ void stage_draw_hud_text(struct labels_s* labels) {
 	snprintf(buf, sizeof(buf), "%05i", global.plr.graze);
 	text_draw(buf, &(TextParams) {
 		.pos = { -6, labels->y.graze },
+		.shader_ptr = stagedraw.hud_text.shader,
+		.font = "mono",
+		.glyph_callback = {
+			draw_numeric_callback,
+			&(struct glyphcb_state) { &stagedraw.hud_text.color.inactive },
+		}
+	});
+
+	// Point Item Value
+	snprintf(buf, sizeof(buf), "%05i", global.plr.point_item_value);
+	text_draw(buf, &(TextParams) {
+		.pos = { -6, labels->y.value },
 		.shader_ptr = stagedraw.hud_text.shader,
 		.font = "mono",
 		.glyph_callback = {
@@ -1173,6 +1203,7 @@ void stage_draw_hud(void) {
 	labels.y.bombs   = label_cur_height+label_height*(i++);
 	labels.y.power   = label_cur_height+label_height*(i++);
 	labels.y.graze   = label_cur_height+label_height*(i++);
+	labels.y.value   = label_cur_height+label_height*(i++);
 
 	r_mat_push();
 	r_mat_translate(615, 0, 0);
@@ -1204,6 +1235,15 @@ void stage_draw_hud(void) {
 
 	// Power stars
 	draw_stars(0, labels.y.power, global.plr.power / 100, global.plr.power % 100, PLR_MAX_POWER / 100, 100, 1, 20);
+	draw_stars_ex(
+		20 * PLR_MAX_POWER / 100, labels.y.power,
+		global.plr.power_overflow / 100, global.plr.power_overflow % 100,
+		PLR_MAX_POWER_OVERFLOW / 100, 100,
+		RGBA(1.00, 0.20 + 0.30 * psin(global.frames / 10.0), 0.20, 1.00),
+		RGBA(0.20, 0.04, 0.04, 0.20),
+		RGBA(0.50, 0.20, 0.10, 0.65),
+		20
+	);
 
 	ShaderProgram *sh_prev = r_shader_current();
 	r_shader("text_default");
@@ -1246,5 +1286,19 @@ void stage_draw_hud(void) {
 		r_color4(1 - red, 1 - red, 1 - red, 1 - red);
 		draw_sprite(VIEWPORT_X+creal(global.boss->pos), 590, "boss_indicator");
 		r_color4(1, 1, 1, 1);
+	}
+
+	// Power Surge indicator
+	if(global.plr.powersurge.ticks) {
+		float surge = global.plr.powersurge.ticks / (float)PLR_POWERSURGE_DURATION;
+		r_state_push();
+		r_mat_push();
+		r_mat_translate(VIEWPORT_X + surge * 0.5 * VIEWPORT_W, VIEWPORT_Y + VIEWPORT_H - 5, 0);
+		r_mat_scale(VIEWPORT_W * surge, 5, 1);
+		r_color4(0.2, 0, 0, 0.1);
+		r_shader_standard_notex();
+		r_draw_quad();
+		r_mat_pop();
+		r_state_pop();
 	}
 }

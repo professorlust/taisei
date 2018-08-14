@@ -45,20 +45,32 @@ void fade_out(float f) {
 	colorfill(0, 0, 0, f);
 }
 
-void draw_stars(int x, int y, int numstars, int numfrags, int maxstars, int maxfrags, float alpha, float star_width) {
+void draw_stars_ex(
+	float x, float y,
+	int numstars, int numfrags,
+	int maxstars, int maxfrags,
+	const Color *fill_clr, const Color *back_clr, const Color *frag_clr,
+	float star_width
+) {
 	Sprite *star = get_sprite("star");
 	int i = 0;
 	float scale = star_width/star->w;
 
-	Color *fill_clr = color_mul_scalar(RGBA(1.00, 1.00, 1.00, 1.00), alpha);
-	Color *back_clr = color_mul_scalar(RGBA(0.04, 0.12, 0.20, 0.20), alpha);
-	Color *frag_clr = color_mul_scalar(RGBA(0.47, 0.56, 0.65, 0.65), alpha);
-
 	// XXX: move to call site?
 	y -= 2;
 
+	static Color prev_back_clr;
+
 	ShaderProgram *prog_saved = r_shader_current();
-	r_shader("sprite_circleclipped_indicator");
+	ShaderProgram *prog_wanted = r_shader_get("sprite_circleclipped_indicator");
+
+	if(memcmp(&prev_back_clr, back_clr, sizeof(prev_back_clr))) {
+		// HACK/FIXME: we can't pass more than 4 floats via custom params, and we don't have auto-flush based on uniforms state, so...
+		prev_back_clr = *back_clr;
+		r_flush_sprites();
+	}
+
+	r_shader_ptr(prog_wanted);
 	r_uniform_vec4_rgba("back_color", back_clr);
 
 	r_mat_push();
@@ -99,6 +111,14 @@ void draw_stars(int x, int y, int numstars, int numfrags, int maxstars, int maxf
 
 	r_mat_pop();
 	r_shader_ptr(prog_saved);
+}
+
+void draw_stars(float x, float y, int numstars, int numfrags, int maxstars, int maxfrags, float alpha, float star_width) {
+	Color *fill_clr = color_mul_scalar(RGBA(1.00, 1.00, 1.00, 1.00), alpha);
+	Color *back_clr = color_mul_scalar(RGBA(0.04, 0.12, 0.20, 0.20), alpha);
+	Color *frag_clr = color_mul_scalar(RGBA(0.47, 0.56, 0.65, 0.65), alpha);
+
+	draw_stars_ex(x, y, numstars, numfrags, maxstars, maxfrags, fill_clr, back_clr, frag_clr, star_width);
 }
 
 static int draw_fraction_callback(Font *font, charcode_t charcode, SpriteParams *spr_params, void *userdata) {
