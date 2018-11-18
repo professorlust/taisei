@@ -360,30 +360,57 @@ static int youmu_split(Enemy *e, int t) {
 		return ACTION_DESTROY;
 	}
 
-	TIMER(&t);
-	//FROM_TO(0, 220, 1) {
-		tsrand_fill(5);
-		double x = nfrand()*10;
-		Color *c = RGBA_MUL_ALPHA(0.1, 0.1, 0.5, clamp(min(60, t), 0, 1));
-		c->a = 0;
+	MYON->pos = e->pos;
+	complex myonpos = MYON->pos;
 
+	float m = max(1e-5, 1 - player_get_bomb_progress(&global.plr, 0));
+	e->pos += 10*e->args[0]*(log(1/m));
+
+
+	if((creal(e->pos) < 0 && creal(e->args[0]) < 0)
+           || (creal(e->pos) > VIEWPORT_W && creal(e->args[0]) > 0)) {
+		e->args[0] = -creal(e->args[0])*(1+0.2*nfrand()) + I * cimag(e->args[0]);
+		e->args[0] *= cexp(I*0.1*nfrand());
+	} 
+	
+	if((cimag(e->pos) < 0 && cimag(e->args[0]) < 0)
+           || (cimag(e->pos) > VIEWPORT_H && cimag(e->args[0]) > 0)) {
+		e->args[0] = -I*cimag(e->args[0])*(1+0.2*nfrand()) + creal(e->args[0]);
+		e->args[0] *= cexp(I*0.1*nfrand());
+	} 
+
+	TIMER(&t);
+	FROM_TO(0, 240, 1) {
 		PARTICLE(
-			.sprite = "petal",
-			.pos = VIEWPORT_W/2+x+(x>0)*VIEWPORT_H*I,
-			.rule = accelerated,
-			.draw_rule = Petal,
-			.color = c,
+			.sprite = "arc",
+			.pos = e->pos,
+			.rule = linear,
+			.draw_rule = Fade,
+			.color = RGBA(0.9, 0.8, 1.0, 0.0),
+			.timeout = 30,
 			.args = {
-				-10*I*x/fabs(x),
-				-I*x/fabs(x)+anfrand(4)*0.1,
-				afrand(1) + afrand(2)*I,
-				afrand(3) + 360.0*I*afrand(0)
+				2*cexp(2*I*M_PI*frand()),
 			},
+			.flags = _i%2 == 0 ? PFLAG_REQUIREDPARTICLE : 0
 		);
-	//}
-	FROM_TO(0, 220, 1) {
-		global.plr.pos = VIEWPORT_W/2.0 + (VIEWPORT_H-180)*I;
+		PARTICLE(
+			.sprite = "stain",
+			.pos = e->pos,
+			.rule = accelerated,
+			.draw_rule = GrowFade,
+			.angle = 2*M_PI*frand(),
+			.color = RGBA(0.2, 0.1, 1.0, 0.0),
+			.timeout = 50,
+			.args = {
+				-1*e->args[0]*cexp(I*0.2*nfrand()),
+				0.1*e->args[0]*I*sin(t/4.),
+				2
+			},
+			.flags = _i%2 == 0 ? PFLAG_REQUIREDPARTICLE : 0
+		);
 	}
+
+	ent_area_damage(myonpos, 100, &(DamageInfo){100, DMG_PLAYER_BOMB});
 
 	return 1;
 }
@@ -394,6 +421,9 @@ static void youmu_mirror_shader(Framebuffer *fb) {
 	double t = player_get_bomb_progress(&global.plr,0);
 	r_shader_ptr(shader);
 	r_uniform_float("tbomb", t);
+
+	complex myonpos = MYON->pos;
+	r_uniform_vec2("myon", creal(myonpos)/VIEWPORT_W, 1-cimag(myonpos)/VIEWPORT_H);
 	draw_framebuffer_tex(fb, VIEWPORT_W, VIEWPORT_H);
 	r_shader_standard();
 
@@ -403,12 +433,13 @@ static void youmu_mirror_shader(Framebuffer *fb) {
 
 static void youmu_mirror_bomb(Player *plr) {
 	play_sound("bomb_youmu_b");
-	create_enemy_p(&plr->slaves, 40.0*I, ENEMY_BOMB, NULL, youmu_split, 280,0,0,0);
+	create_enemy_p(&plr->slaves, MYON->pos, ENEMY_BOMB, NULL, youmu_split, -cexp(I*carg(MYON->args[0])), 0, 0, 0);
 }
 
 static void youmu_mirror_init(Player *plr) {
 	Enemy *myon = create_enemy_p(&plr->slaves, 40.0*I, ENEMY_IMMUNE, NULL, youmu_mirror_myon, 0, 0, 0, 0);
 	myon->ent.draw_layer = LAYER_PLAYER_SLAVE;
+	youmu_common_bomb_buffer_init();
 }
 
 static void youmu_mirror_preload(void) {
@@ -434,6 +465,9 @@ static void youmu_mirror_preload(void) {
 	NULL);
 }
 
+static void youmu_mirror_bomb_logic(Player *plr) {
+}
+
 PlayerMode plrmode_youmu_a = {
 	.name = "Mirror Sign",
 	.character = &character_youmu,
@@ -447,6 +481,6 @@ PlayerMode plrmode_youmu_a = {
 		.shot = youmu_mirror_shot,
 		.init = youmu_mirror_init,
 		.preload = youmu_mirror_preload,
-		.think = player_placeholder_bomb_logic,
+		.think = youmu_mirror_bomb_logic,
 	},
 };
