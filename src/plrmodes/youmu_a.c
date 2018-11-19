@@ -364,19 +364,20 @@ static int youmu_split(Enemy *e, int t) {
 	complex myonpos = MYON->pos;
 
 	float m = max(1e-5, 1 - player_get_bomb_progress(&global.plr, 0));
-	e->pos += 10*e->args[0]*(log(1/m));
+	e->pos += e->args[0] * 30;
+	e->args[0] *= 0.999;
 
 
 	if((creal(e->pos) < 0 && creal(e->args[0]) < 0)
            || (creal(e->pos) > VIEWPORT_W && creal(e->args[0]) > 0)) {
-		e->args[0] = -creal(e->args[0])*(1+0.2*nfrand()) + I * cimag(e->args[0]);
-		e->args[0] *= cexp(I*0.1*nfrand());
+		e->args[0] = -creal(e->args[0]) + I * cimag(e->args[0]);
+		e->args[0] *= 0.8 * cexp(I*0.1*nfrand());
 	} 
 	
 	if((cimag(e->pos) < 0 && cimag(e->args[0]) < 0)
            || (cimag(e->pos) > VIEWPORT_H && cimag(e->args[0]) > 0)) {
-		e->args[0] = -I*cimag(e->args[0])*(1+0.2*nfrand()) + creal(e->args[0]);
-		e->args[0] *= cexp(I*0.1*nfrand());
+		e->args[0] = -I*cimag(e->args[0]) + creal(e->args[0]);
+		e->args[0] *= 0.8 * cexp(I * 0.1 * nfrand());
 	} 
 
 	TIMER(&t);
@@ -410,7 +411,9 @@ static int youmu_split(Enemy *e, int t) {
 		);
 	}
 
-	ent_area_damage(myonpos, 100, &(DamageInfo){100, DMG_PLAYER_BOMB});
+	float range = 100;
+	ent_area_damage(myonpos, range, &(DamageInfo){250, DMG_PLAYER_BOMB});
+	stage_clear_hazards_at(myonpos, range, CLEAR_HAZARDS_ALL | CLEAR_HAZARDS_NOW);
 
 	return 1;
 }
